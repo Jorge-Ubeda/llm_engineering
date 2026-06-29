@@ -55,17 +55,46 @@ def fetch_website_contents_with_js(url):
     
     return html_result[0]
 
+def parse_letterboxd_rss(url):
+    """
+    Return the first 10 reviewed films from a Letterboxd RSS feed,
+    formatted as label: value pairs, truncated to 2,000 characters.
+    """
+    response = fetch_website_contents(url)
+    soup = BeautifulSoup(response.content, "xml")
+    title = soup.title.string if soup.title else "No title found"
+    items = soup.find_all("item")[:10]
+    item_texts = []
+    for item in items:
+        lines = []
+        for tag_name in ["tmdb:movieId", "letterboxd:memberLike"]:
+            tag = item.find(tag_name)
+            if tag:
+                tag.decompose()
+        for child in item.find_all(recursive=False):
+            label = child.name
+            if label == "description":
+                desc_soup = BeautifulSoup(child.get_text(), "html.parser")
+                for img in desc_soup.find_all("img"):
+                    img.decompose()
+                value = desc_soup.get_text(separator="\n", strip=True)
+            else:
+                value = child.get_text(strip=True)
+            if value:
+                lines.append(f"{label}: {value}")
+        item_texts.append("\n".join(lines))
+    text = "\n\n".join(item_texts)
+    return (title + "\n\n" + text)
+
 def parse_website_contents(url, contains_js=False):
     """
-    Return the title and contents of the website at the given url;
-    truncate to 2,000 characters as a sensible limit
+    Return the title and text body of the website at the given url;
+    truncated to 2,000 characters.
     """
     if contains_js:
-        response = fetch_website_contents_with_js(url)
-        soup = BeautifulSoup(response, "html.parser")
+        soup = BeautifulSoup(fetch_website_contents_with_js(url), "html.parser")
     else:
-        response = fetch_website_contents(url)
-        soup = BeautifulSoup(response.content, "html.parser")
+        soup = BeautifulSoup(fetch_website_contents(url).content, "html.parser")
 
     title = soup.title.string if soup.title else "No title found"
     if soup.body:
@@ -73,7 +102,7 @@ def parse_website_contents(url, contains_js=False):
             irrelevant.decompose()
         text = soup.body.get_text(separator="\n", strip=True)
     else:
-        text = ""
+        text = soup.get_text(separator="\n", strip=True)
     return (title + "\n\n" + text)[:2_000]
 
 def fetch_website_links(url):
